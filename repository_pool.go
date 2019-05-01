@@ -7,7 +7,9 @@ import (
 	"path/filepath"
 	"sync/atomic"
 
-	"gopkg.in/src-d/go-billy-siva.v4"
+	"github.com/src-d/go-borges"
+	"github.com/src-d/go-borges/siva"
+	sivafs "gopkg.in/src-d/go-billy-siva.v4"
 	billy "gopkg.in/src-d/go-billy.v4"
 	"gopkg.in/src-d/go-billy.v4/osfs"
 	errors "gopkg.in/src-d/go-errors.v1"
@@ -194,12 +196,64 @@ func (r *sivaRepository) Cache() cache.Object {
 	return r.cache
 }
 
+type borgesRepository struct {
+	cache cache.Object
+	repo  borges.Repository
+	lib   borges.Library
+}
+
+func borgesRepo(
+	lib borges.Library,
+	repo borges.Repository,
+	cache cache.Object,
+) *borgesRepository {
+	return &borgesRepository{
+		lib:   lib,
+		repo:  repo,
+		cache: cache,
+	}
+}
+
+func (r *borgesRepository) ID() string {
+	return r.repo.ID().String()
+}
+
+func (r *borgesRepository) Repo() (*Repository, error) {
+	return NewRepository(r.ID(), r.repo.R(), func() {
+		r.repo.Close()
+	}), nil
+}
+
+func (r *borgesRepository) FS() (billy.Filesystem, error) {
+	println("FS", r.ID(), r.repo.LocationID())
+	loc, err := r.lib.Location(r.repo.LocationID())
+	if err != nil {
+		return nil, err
+	}
+
+	if s, ok := loc.(*siva.Location); ok {
+		return s.FS(borges.ReadOnlyMode)
+	}
+
+	return nil, nil
+}
+
+func (r *borgesRepository) Path() string {
+	return "/cannot/get/path"
+}
+
+func (r *borgesRepository) Cache() cache.Object {
+	println("cache")
+	return r.Cache()
+}
+
 // RepositoryPool holds a pool git repository paths and
 // functionality to open and iterate them.
 type RepositoryPool struct {
 	repositories map[string]repository
 	idOrder      []string
 	cache        cache.Object
+	library      borges.Library
 }
 
 // NewRepositoryPool initializes a new RepositoryPool with LRU cache.
@@ -208,6 +262,19 @@ func NewRepositoryPool(maxCacheSize cache.FileSize) *RepositoryPool {
 		repositories: make(map[string]repository),
 		cache:        cache.NewObjectLRU(maxCacheSize),
 	}
+}
+
+func (p *RepositoryPool) AddLibrary(lib borges.Library) {
+	p.library = lib
+
+	// it, err := lib.Repositories(borges.ReadOnlyMode)
+	// if err != nil {
+	// 	return err
+	// }
+
+	// return it.ForEach(func(r borges.Repository) {
+	// 	p.idOrder.
+	// })
 }
 
 // Add inserts a new repository in the pool.
@@ -246,6 +313,7 @@ func (p *RepositoryPool) AddSivaFileWithID(id, path string) error {
 // GetPos retrieves a repository at a given position. If the position is
 // out of bounds it returns io.EOF.
 func (p *RepositoryPool) GetPos(pos int) (*Repository, error) {
+	println("GetPos")
 	if pos >= len(p.repositories) {
 		return nil, io.EOF
 	}
@@ -263,6 +331,18 @@ var ErrPoolRepoNotFound = errors.NewKind("repository id %s not found in the pool
 
 // GetRepo returns a repository with the given id from the pool.
 func (p *RepositoryPool) GetRepo(id string) (*Repository, error) {
+	println("GetRepo", id)
+	if p.library != nil {
+		repo, err := p.library.Get(borges.RepositoryID(id), borges.ReadOnlyMode)
+		if err != nil {
+			return nil, ErrPoolRepoNotFound.Wrap(err, id)
+		}
+
+		return NewRepository(id, repo.R(), func() {
+			repo.Close()
+		}), nil
+	}
+
 	r, ok := p.repositories[id]
 	if !ok {
 		return nil, ErrPoolRepoNotFound.New(id)
@@ -273,6 +353,16 @@ func (p *RepositoryPool) GetRepo(id string) (*Repository, error) {
 
 // RepoIter creates a new Repository iterator
 func (p *RepositoryPool) RepoIter() (*RepositoryIter, error) {
+	println("RepoIter")
+	if p.library != nil {
+		it, err := p.library.Repositories(borges.ReadOnlyMode)
+		if err != nil {
+			return nil, err
+		}
+
+		return &RepositoryIter{repoIter: it}, nil
+	}
+
 	iter := &RepositoryIter{
 		pool: p,
 	}
@@ -283,13 +373,26 @@ func (p *RepositoryPool) RepoIter() (*RepositoryIter, error) {
 
 // RepositoryIter iterates over all repositories in the pool
 type RepositoryIter struct {
-	pos  int32
-	pool *RepositoryPool
+	pos      int32
+	pool     *RepositoryPool
+	repoIter borges.RepositoryIterator
 }
 
 // Next retrieves the next Repository. It returns io.EOF as error
 // when there are no more Repositories to retrieve.
 func (i *RepositoryIter) Next() (*Repository, error) {
+	println("RepositoryIter.Next")
+	if i.repoIter != nil {
+		r, err := i.repoIter.Next()
+		if err != nil {
+			return nil, err
+		}
+
+		return NewRepository(r.ID().String(), r.R(), func() {
+			r.Close()
+		}), nil
+	}
+
 	pos := int(atomic.LoadInt32(&i.pos))
 	r, err := i.pool.GetPos(pos)
 	atomic.AddInt32(&i.pos, 1)
@@ -299,5 +402,9 @@ func (i *RepositoryIter) Next() (*Repository, error) {
 
 // Close finished iterator. It's no-op.
 func (i *RepositoryIter) Close() error {
+	if i.repoIter != nil {
+		i.repoIter.Close()
+	}
+
 	return nil
 }

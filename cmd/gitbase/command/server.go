@@ -10,13 +10,16 @@ import (
 	"strings"
 	"time"
 
+	"github.com/rakyll/autopprof"
 	"github.com/src-d/gitbase"
 	"github.com/src-d/gitbase/internal/function"
 	"github.com/src-d/gitbase/internal/rule"
+	"github.com/src-d/go-borges/siva"
 
 	"github.com/opentracing/opentracing-go"
 	"github.com/sirupsen/logrus"
 	"github.com/uber/jaeger-client-go/config"
+	"gopkg.in/src-d/go-billy.v4/osfs"
 	"gopkg.in/src-d/go-git.v4/plumbing/cache"
 	sqle "gopkg.in/src-d/go-mysql-server.v0"
 	"gopkg.in/src-d/go-mysql-server.v0/auth"
@@ -106,6 +109,10 @@ func NewDatabaseEngine(
 // Execute starts a new gitbase server based on provided configuration, it
 // honors the go-flags.Commander interface.
 func (c *Server) Execute(args []string) error {
+	autopprof.Capture(autopprof.CPUProfile{
+		Duration: 60 * time.Second,
+	})
+
 	if c.Verbose {
 		logrus.SetLevel(logrus.DebugLevel)
 	}
@@ -210,9 +217,25 @@ func (c *Server) buildDatabase() error {
 
 	c.pool = gitbase.NewRepositoryPool(c.CacheSize * cache.MiByte)
 
-	if err := c.addDirectories(); err != nil {
+	if len(c.Directories) < 1 {
+		panic("no dirs")
+	}
+
+	fs := osfs.New(c.Directories[0])
+	lopt := siva.LibraryOptions{
+		RootedRepo: true,
+		Cache:      cache.NewObjectLRU(c.CacheSize * cache.MiByte),
+	}
+
+	lib, err := siva.NewLibrary("siva", fs, lopt)
+	if err != nil {
 		return err
 	}
+
+	c.pool.AddLibrary(lib)
+	// if err := c.addDirectories(); err != nil {
+	// 	return err
+	// }
 
 	c.engine.AddDatabase(gitbase.NewDatabase(c.Name, c.pool))
 	c.engine.AddDatabase(sql.NewInformationSchemaDatabase(c.engine.Catalog))

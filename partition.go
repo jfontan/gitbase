@@ -3,6 +3,7 @@ package gitbase
 import (
 	"io"
 
+	"github.com/src-d/go-borges"
 	errors "gopkg.in/src-d/go-errors.v1"
 	"gopkg.in/src-d/go-mysql-server.v0/sql"
 )
@@ -35,6 +36,9 @@ func (p RepositoryPartition) Key() []byte {
 type repositoryPartitionIter struct {
 	repos []string
 	pos   int
+
+	repoIter borges.RepositoryIterator
+	lib      borges.Library
 }
 
 func newRepositoryPartitionIter(ctx *sql.Context) (sql.PartitionIter, error) {
@@ -43,10 +47,32 @@ func newRepositoryPartitionIter(ctx *sql.Context) (sql.PartitionIter, error) {
 		return nil, err
 	}
 
+	if s.Pool.library != nil {
+		it, err := s.Pool.library.Repositories(borges.ReadOnlyMode)
+		if err != nil {
+			return nil, err
+		}
+
+		return &repositoryPartitionIter{
+			repoIter: it,
+			lib:      s.Pool.library,
+		}, nil
+	}
+
 	return &repositoryPartitionIter{repos: s.Pool.idOrder}, nil
 }
 
 func (i *repositoryPartitionIter) Next() (sql.Partition, error) {
+	if i.repoIter != nil {
+		r, err := i.repoIter.Next()
+		if err != nil {
+			return nil, err
+		}
+
+		// br := borgesRepo(i.lib, r, cache.NewObjectLRU(64*cache.MiByte))
+		return RepositoryPartition(r.ID().String()), nil
+	}
+
 	if i.pos >= len(i.repos) {
 		return nil, io.EOF
 	}
