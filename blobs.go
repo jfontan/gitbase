@@ -209,7 +209,7 @@ func (i *blobRowIter) nextByHash() (sql.Row, error) {
 			return nil, err
 		}
 
-		return blobToRow(i.repo.ID, blob, i.readContent)
+		return blobToRow(i.repo.ID(), blob, i.readContent)
 	}
 }
 
@@ -236,7 +236,7 @@ func (i *blobRowIter) next() (sql.Row, error) {
 			return nil, err
 		}
 
-		return blobToRow(i.repo.ID, o, i.readContent)
+		return blobToRow(i.repo.ID(), o, i.readContent)
 	}
 }
 
@@ -347,7 +347,12 @@ func newBlobsKeyValueIter(
 		return nil, err
 	}
 
-	r := pool.repositories[repo.ID]
+	// r := pool.repositories[repo.ID]
+	r, err := pool.GetRepo(repo.ID())
+	if err != nil {
+		return nil, err
+	}
+
 	idx, err := newRepositoryIndex(r)
 	if err != nil {
 		return nil, err
@@ -379,7 +384,7 @@ func (i *blobsKeyValueIter) Next() ([]interface{}, []byte, error) {
 	}
 
 	key, err := encodeIndexKey(&packOffsetIndexKey{
-		Repository: i.repo.ID,
+		Repository: i.repo.ID(),
 		Packfile:   packfile.String(),
 		Offset:     offset,
 		Hash:       hash,
@@ -388,7 +393,7 @@ func (i *blobsKeyValueIter) Next() ([]interface{}, []byte, error) {
 		return nil, nil, err
 	}
 
-	row, err := blobToRow(i.repo.ID, blob, stringContains(i.columns, "blob_content"))
+	row, err := blobToRow(i.repo.ID(), blob, stringContains(i.columns, "blob_content"))
 	if err != nil {
 		return nil, nil, err
 	}

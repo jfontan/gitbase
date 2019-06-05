@@ -50,7 +50,7 @@ func TestRemotesTable(t *testing.T) {
 
 			num := urlstring[len(urlstring)-1:]
 
-			require.Equal(repo.ID, row[0])
+			require.Equal(repo.ID(), row[0])
 
 			url := fmt.Sprintf("url%v", num)
 			require.Equal(url, row[2]) // push

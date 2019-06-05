@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"testing"
 
+	fixtures "github.com/src-d/go-git-fixtures"
 	"github.com/stretchr/testify/require"
-	"github.com/src-d/go-git-fixtures"
 	"gopkg.in/src-d/go-git.v4"
 	"gopkg.in/src-d/go-git.v4/plumbing/cache"
 	"gopkg.in/src-d/go-git.v4/plumbing/object"
@@ -20,12 +20,12 @@ func TestRepository(t *testing.T) {
 	gitRepo := &git.Repository{}
 	repo := NewRepository("identifier", gitRepo, nil)
 
-	require.Equal("identifier", repo.ID)
+	require.Equal("identifier", repo.ID())
 	require.Equal(gitRepo, repo.Repository)
 
 	repo = NewRepository("/other/path", nil, nil)
 
-	require.Equal("/other/path", repo.ID)
+	require.Equal("/other/path", repo.ID())
 	require.Nil(repo.Repository)
 }
 
@@ -57,12 +57,12 @@ func TestRepositoryPoolBasic(t *testing.T) {
 
 	repo, err = pool.GetPos(1)
 	require.NoError(err)
-	require.Equal("1", repo.ID)
+	require.Equal("1", repo.ID())
 	require.NotNil(repo)
 
 	repo, err = pool.GetRepo("1")
 	require.NoError(err)
-	require.Equal("1", repo.ID)
+	require.Equal("1", repo.ID())
 	require.NotNil(repo)
 
 	err = pool.Add(gitRepo("1", path, pool.cache))
@@ -86,7 +86,7 @@ func TestRepositoryPoolGit(t *testing.T) {
 	require.NoError(pool.AddGit(path))
 
 	repo, err := pool.GetPos(0)
-	require.Equal(path, repo.ID)
+	require.Equal(path, repo.ID())
 	require.NotNil(repo)
 	require.NoError(err)
 
@@ -133,7 +133,7 @@ func TestRepositoryPoolIterator(t *testing.T) {
 		}
 
 		require.NotNil(repo)
-		require.Equal(strconv.Itoa(count), repo.ID)
+		require.Equal(strconv.Itoa(count), repo.ID())
 
 		count++
 	}

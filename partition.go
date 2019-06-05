@@ -1,8 +1,7 @@
 package gitbase
 
 import (
-	"io"
-
+	"github.com/src-d/go-borges"
 	errors "gopkg.in/src-d/go-errors.v1"
 	"github.com/src-d/go-mysql-server/sql"
 )
@@ -16,12 +15,13 @@ func (partitioned) Partitions(ctx *sql.Context) (sql.PartitionIter, error) {
 }
 
 func (partitioned) PartitionCount(ctx *sql.Context) (int64, error) {
-	s, err := getSession(ctx)
-	if err != nil {
-		return 0, err
-	}
+	return int64(42), nil
+	// s, err := getSession(ctx)
+	// if err != nil {
+	// 	return 0, err
+	// }
 
-	return int64(len(s.Pool.repositories)), nil
+	// return int64(len(s.Pool.repositories)), nil
 }
 
 // RepositoryPartition represents a partition which is a repository id.
@@ -33,8 +33,10 @@ func (p RepositoryPartition) Key() []byte {
 }
 
 type repositoryPartitionIter struct {
-	repos []string
-	pos   int
+	// repos []string
+	// pos   int
+	repoIter borges.RepositoryIterator
+	lib      borges.Library
 }
 
 func newRepositoryPartitionIter(ctx *sql.Context) (sql.PartitionIter, error) {
@@ -43,20 +45,42 @@ func newRepositoryPartitionIter(ctx *sql.Context) (sql.PartitionIter, error) {
 		return nil, err
 	}
 
-	return &repositoryPartitionIter{repos: s.Pool.idOrder}, nil
+	it, err := s.Pool.library.Repositories(borges.ReadOnlyMode)
+	if err != nil {
+		return nil, err
+	}
+
+	return &repositoryPartitionIter{
+		repoIter: it,
+		lib:      s.Pool.library,
+	}, nil
+
+	// return &repositoryPartitionIter{repos: s.Pool.idOrder}, nil
 }
 
 func (i *repositoryPartitionIter) Next() (sql.Partition, error) {
-	if i.pos >= len(i.repos) {
-		return nil, io.EOF
+	// if i.pos >= len(i.repos) {
+	// 	return nil, io.EOF
+	// }
+
+	// i.pos++
+	// return RepositoryPartition(i.repos[i.pos-1]), nil
+
+	r, err := i.repoIter.Next()
+	if err != nil {
+		return nil, err
 	}
 
-	i.pos++
-	return RepositoryPartition(i.repos[i.pos-1]), nil
+	// br := borgesRepo(i.lib, r, cache.NewObjectLRU(64*cache.MiByte))
+	return RepositoryPartition(r.ID().String()), nil
 }
 
 func (i *repositoryPartitionIter) Close() error {
-	i.pos = len(i.repos)
+	// i.pos = len(i.repos)
+	if i.repoIter != nil {
+		i.repoIter.Close()
+	}
+
 	return nil
 }
 
