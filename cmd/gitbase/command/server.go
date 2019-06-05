@@ -7,16 +7,18 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/src-d/gitbase"
 	"github.com/src-d/gitbase/internal/function"
 	"github.com/src-d/gitbase/internal/rule"
+	"github.com/src-d/go-borges/libraries"
+	"github.com/src-d/go-borges/siva"
 
 	"github.com/opentracing/opentracing-go"
 	"github.com/sirupsen/logrus"
 	"github.com/uber/jaeger-client-go/config"
+	"gopkg.in/src-d/go-billy.v4/osfs"
 	"gopkg.in/src-d/go-git.v4/plumbing/cache"
 	sqle "gopkg.in/src-d/go-mysql-server.v0"
 	"gopkg.in/src-d/go-mysql-server.v0/auth"
@@ -208,7 +210,37 @@ func (c *Server) buildDatabase() error {
 		)
 	}
 
-	c.pool = gitbase.NewRepositoryPool(c.CacheSize * cache.MiByte)
+	// library := plain.NewLibrary("plain")
+	// for _, d := range c.Directories {
+	// 	loc, err := plain.NewLocation(borges.LocationID(d), osfs.New(d), nil)
+	// 	if err != nil {
+	// 		return err
+	// 	}
+	// 	library.AddLocation(loc)
+	// }
+
+	library := libraries.New(libraries.Options{})
+	c.pool = gitbase.NewRepositoryPool(c.CacheSize*cache.MiByte, library)
+
+	sharedCache := cache.NewObjectLRU(512 * cache.MiByte)
+
+	ops := siva.LibraryOptions{
+		Transactional: true,
+		RootedRepo:    true,
+		Cache:         sharedCache,
+		Bucket:        0,
+		Performance:   true,
+		RegistryCache: 1000,
+	}
+
+	for _, d := range c.Directories {
+		lib, err := siva.NewLibrary(d, osfs.New(d), ops)
+		if err != nil {
+			return err
+		}
+
+		library.Add(lib)
+	}
 
 	if err := c.addDirectories(); err != nil {
 		return err
@@ -269,122 +301,122 @@ func (c *Server) addDirectories() error {
 		return nil
 	}
 
-	for _, directory := range c.Directories {
-		if err := c.addDirectory(directory); err != nil {
-			return err
-		}
-	}
+	// for _, directory := range c.Directories {
+	// 	if err := c.addDirectory(directory); err != nil {
+	// 		return err
+	// 	}
+	// }
 
 	return nil
 }
 
-func (c *Server) addDirectory(directory string) error {
-	matches, err := gitbase.PatternMatches(directory)
-	if err != nil {
-		return err
-	}
+// func (c *Server) addDirectory(directory string) error {
+// 	matches, err := gitbase.PatternMatches(directory)
+// 	if err != nil {
+// 		return err
+// 	}
 
-	for _, match := range matches {
-		if err := c.addMatch(directory, match); err != nil {
-			logrus.WithFields(logrus.Fields{
-				"path":  match,
-				"error": err,
-			}).Error("path couldn't be inspected")
-		}
-	}
+// 	for _, match := range matches {
+// 		if err := c.addMatch(directory, match); err != nil {
+// 			logrus.WithFields(logrus.Fields{
+// 				"path":  match,
+// 				"error": err,
+// 			}).Error("path couldn't be inspected")
+// 		}
+// 	}
 
-	return nil
-}
+// 	return nil
+// }
 
-func (c *Server) addMatch(prefix, match string) error {
-	root, err := filepath.Abs(match)
-	if err != nil {
-		return err
-	}
+// func (c *Server) addMatch(prefix, match string) error {
+// 	root, err := filepath.Abs(match)
+// 	if err != nil {
+// 		return err
+// 	}
 
-	root, err = filepath.EvalSymlinks(root)
-	if err != nil {
-		return err
-	}
+// 	root, err = filepath.EvalSymlinks(root)
+// 	if err != nil {
+// 		return err
+// 	}
 
-	initDepth := strings.Count(root, string(os.PathSeparator))
-	return filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			if os.IsPermission(err) {
-				return filepath.SkipDir
-			}
-			return err
-		}
+// 	initDepth := strings.Count(root, string(os.PathSeparator))
+// 	return filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+// 		if err != nil {
+// 			if os.IsPermission(err) {
+// 				return filepath.SkipDir
+// 			}
+// 			return err
+// 		}
 
-		if info.IsDir() {
-			if err := c.addIfGitRepo(prefix, path); err != nil {
-				return err
-			}
+// 		if info.IsDir() {
+// 			if err := c.addIfGitRepo(prefix, path); err != nil {
+// 				return err
+// 			}
 
-			depth := strings.Count(path, string(os.PathSeparator)) - initDepth
-			if depth >= c.Depth {
-				return filepath.SkipDir
-			}
+// 			depth := strings.Count(path, string(os.PathSeparator)) - initDepth
+// 			if depth >= c.Depth {
+// 				return filepath.SkipDir
+// 			}
 
-			return nil
-		}
+// 			return nil
+// 		}
 
-		if !c.DisableSiva &&
-			info.Mode().IsRegular() &&
-			gitbase.IsSivaFile(info.Name()) {
-			id, err := gitbase.StripPrefix(prefix, path)
-			if err != nil {
-				return err
-			}
+// 		if !c.DisableSiva &&
+// 			info.Mode().IsRegular() &&
+// 			gitbase.IsSivaFile(info.Name()) {
+// 			id, err := gitbase.StripPrefix(prefix, path)
+// 			if err != nil {
+// 				return err
+// 			}
 
-			if err := c.pool.AddSivaFileWithID(id, path); err != nil {
-				logrus.WithFields(logrus.Fields{
-					"path":  path,
-					"error": err,
-				}).Error("repository could not be addded")
+// 			if err := c.pool.AddSivaFileWithID(id, path); err != nil {
+// 				logrus.WithFields(logrus.Fields{
+// 					"path":  path,
+// 					"error": err,
+// 				}).Error("repository could not be addded")
 
-				return nil
-			}
+// 				return nil
+// 			}
 
-			logrus.WithField("path", path).Debug("repository added")
-		}
+// 			logrus.WithField("path", path).Debug("repository added")
+// 		}
 
-		return nil
-	})
-}
+// 		return nil
+// 	})
+// }
 
-func (c *Server) addIfGitRepo(prefix, path string) error {
-	ok, err := gitbase.IsGitRepo(path)
-	if err != nil {
-		logrus.WithFields(logrus.Fields{
-			"path":  path,
-			"error": err,
-		}).Error("path couldn't be inspected")
+// func (c *Server) addIfGitRepo(prefix, path string) error {
+// 	ok, err := gitbase.IsGitRepo(path)
+// 	if err != nil {
+// 		logrus.WithFields(logrus.Fields{
+// 			"path":  path,
+// 			"error": err,
+// 		}).Error("path couldn't be inspected")
 
-		return filepath.SkipDir
-	}
+// 		return filepath.SkipDir
+// 	}
 
-	if ok {
-		if !c.DisableGit {
-			id, err := gitbase.StripPrefix(prefix, path)
-			if err != nil {
-				return err
-			}
+// 	if ok {
+// 		if !c.DisableGit {
+// 			id, err := gitbase.StripPrefix(prefix, path)
+// 			if err != nil {
+// 				return err
+// 			}
 
-			if err := c.pool.AddGitWithID(id, path); err != nil {
-				logrus.WithFields(logrus.Fields{
-					"id":    id,
-					"path":  path,
-					"error": err,
-				}).Error("repository could not be added")
-			}
+// 			if err := c.pool.AddGitWithID(id, path); err != nil {
+// 				logrus.WithFields(logrus.Fields{
+// 					"id":    id,
+// 					"path":  path,
+// 					"error": err,
+// 				}).Error("repository could not be added")
+// 			}
 
-			logrus.WithField("path", path).Debug("repository added")
-		}
+// 			logrus.WithField("path", path).Debug("repository added")
+// 		}
 
-		// either the repository is added or not, the path must be skipped
-		return filepath.SkipDir
-	}
+// 		// either the repository is added or not, the path must be skipped
+// 		return filepath.SkipDir
+// 	}
 
-	return nil
-}
+// 	return nil
+// }

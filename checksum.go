@@ -8,7 +8,6 @@ import (
 	"sort"
 	"strings"
 
-	git "gopkg.in/src-d/go-git.v4"
 	"gopkg.in/src-d/go-git.v4/plumbing"
 )
 
@@ -18,9 +17,24 @@ type checksumable struct {
 
 func (c *checksumable) Checksum() (string, error) {
 	hash := sha1.New()
-	for _, id := range c.pool.idOrder {
-		repo := c.pool.repositories[id]
-		hash.Write([]byte(id))
+	iter, err := c.pool.RepoIter()
+	if err != nil {
+		return "", err
+	}
+	defer iter.Close()
+
+	// for _, id := range c.pool.idOrder {
+	for {
+		// repo := c.pool.repositories[id]
+		// hash.Write([]byte(id))
+
+		repo, err := iter.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return "", err
+		}
 
 		bytes, err := readChecksum(repo)
 		if err != nil {
@@ -44,7 +58,7 @@ func (c *checksumable) Checksum() (string, error) {
 	return base64.StdEncoding.EncodeToString(hash.Sum(nil)), nil
 }
 
-func readChecksum(r repository) ([]byte, error) {
+func readChecksum(r *Repository) ([]byte, error) {
 	fs, err := r.FS()
 	if err != nil {
 		return nil, err
@@ -99,14 +113,14 @@ func (b byHashAndName) Less(i, j int) bool {
 	return strings.Compare(b[i].name, b[j].name) < 0
 }
 
-func readRefs(r repository) ([]byte, error) {
-	repo, err := r.Repo()
-	if err != nil {
-		if err == git.ErrRepositoryNotExists {
-			return nil, nil
-		}
-		return nil, err
-	}
+func readRefs(repo *Repository) ([]byte, error) {
+	// repo, err := r.Repo()
+	// if err != nil {
+	// 	if err == git.ErrRepositoryNotExists {
+	// 		return nil, nil
+	// 	}
+	// 	return nil, err
+	// }
 
 	buf := bytes.NewBuffer(nil)
 
