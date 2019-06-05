@@ -183,20 +183,24 @@ func (s *FilesystemSuite) TestFileOperations(c *C) {
 }
 
 func (s *FilesystemSuite) TestReadFs(c *C) {
+	testReadFs(c, false)
+}
+
+func testReadFs(c *C, readOnly bool) {
 	for _, fixture := range fixtures {
-		fs := fixture.FS(c)
+		fs := fixture.FS(c, readOnly)
 		c.Assert(fs, NotNil)
 
-		s.testOpenAndRead(c, fixture, fs)
-		s.testReadDir(c, fixture, fs)
-		s.testStat(c, fixture, fs)
-		s.testNested(c, fixture, fs)
+		testOpenAndRead(c, fixture, fs)
+		testReadDir(c, fixture, fs)
+		testStat(c, fixture, fs)
+		testNested(c, fixture, fs)
 	}
 }
 
 func (s *FilesystemSuite) TestCapabilities(c *C) {
 	f := fixtures[0]
-	fs := f.FS(c)
+	fs := f.FS(c, false)
 
 	caps := billy.Capabilities(fs)
 	expected := billy.ReadCapability |
@@ -206,9 +210,12 @@ func (s *FilesystemSuite) TestCapabilities(c *C) {
 	c.Assert(caps, Equals, expected)
 }
 
-func (s *FilesystemSuite) testOpenAndRead(c *C, f *Fixture, fs billy.Filesystem) {
+func testOpenAndRead(c *C, f *Fixture, fs billy.Filesystem) {
 	for _, path := range f.contents {
 		s, err := fs.Stat(path)
+		if err != nil {
+			println("path", path)
+		}
 		c.Assert(err, IsNil)
 
 		if !s.IsDir() {
@@ -230,7 +237,7 @@ func (s *FilesystemSuite) testOpenAndRead(c *C, f *Fixture, fs billy.Filesystem)
 	c.Assert(err, Equals, os.ErrNotExist)
 }
 
-func (s *FilesystemSuite) testReadDir(c *C, f *Fixture, fs billy.Filesystem) {
+func testReadDir(c *C, f *Fixture, fs billy.Filesystem) {
 	for _, dir := range []string{"", ".", "/"} {
 		files, err := fs.ReadDir(dir)
 		c.Assert(err, IsNil)
@@ -247,7 +254,7 @@ func (s *FilesystemSuite) testReadDir(c *C, f *Fixture, fs billy.Filesystem) {
 	c.Assert(dirLs, HasLen, 0)
 }
 
-func (s *FilesystemSuite) testStat(c *C, f *Fixture, fs billy.Filesystem) {
+func testStat(c *C, f *Fixture, fs billy.Filesystem) {
 	for _, path := range f.contents {
 		fi, err := fs.Stat(path)
 		c.Assert(err, IsNil)
@@ -259,7 +266,7 @@ func (s *FilesystemSuite) testStat(c *C, f *Fixture, fs billy.Filesystem) {
 	c.Assert(err, Equals, os.ErrNotExist)
 }
 
-func (s *FilesystemSuite) testNested(c *C, f *Fixture, fs billy.Filesystem) {
+func testNested(c *C, f *Fixture, fs billy.Filesystem) {
 	for _, dir := range f.nested {
 		c.Assert(fs, NotNil)
 
@@ -273,7 +280,7 @@ func (s *FilesystemSuite) testNested(c *C, f *Fixture, fs billy.Filesystem) {
 			c.Assert(len(files), Equals, len(dir.files))
 
 			for idx, fi := range files {
-				c.Assert(dir.files[idx], Equals, fi.Name())
+				c.Assert(fi.Name(), Equals, dir.files[idx])
 			}
 		}
 	}
@@ -365,6 +372,7 @@ type nestedContent struct {
 
 type Fixture struct {
 	name     string
+	unsafe   bool
 	contents []string
 	nested   []nestedContent
 }
@@ -392,6 +400,12 @@ var fixtures = []*Fixture{
 		contents: []string{
 			"imoutside",
 		},
+	}, {
+		name:   "zipslip.siva",
+		unsafe: true,
+		contents: []string{
+			"subdir",
+		},
 	},
 }
 
@@ -399,11 +413,109 @@ func (f *Fixture) Path() string {
 	return filepath.Join(fixturesPath, f.name)
 }
 
-func (f *Fixture) FS(c *C) billy.Filesystem {
+func (f *Fixture) FS(c *C, readOnly bool) billy.Filesystem {
+	fs, err := f.FSOffset(c, readOnly, 0)
+	c.Assert(err, IsNil)
+
+	return fs
+}
+
+func (f *Fixture) FSOffset(
+	c *C,
+	readOnly bool,
+	offset uint64,
+) (billy.Filesystem, error) {
 	tmp := c.MkDir()
 
 	err := copyFile(f.Path(), filepath.Join(tmp, f.name))
+	if err != nil {
+		return nil, err
+	}
+
+	options := SivaFSOptions{
+		UnsafePaths: f.unsafe,
+		ReadOnly:    readOnly,
+		Offset:      offset,
+	}
+
+	fs, err := NewFilesystemWithOptions(osfs.New(tmp), f.name, memfs.New(), options)
+
+	return fs, err
+}
+
+type ReadOnlyFilesystemSuite struct {
+}
+
+var _ = Suite(&ReadOnlyFilesystemSuite{})
+
+func (s *ReadOnlyFilesystemSuite) TestReadFs(c *C) {
+	testReadFs(c, true)
+}
+
+func (s *ReadOnlyFilesystemSuite) TestCapabilities(c *C) {
+	f := fixtures[0]
+	fs := f.FS(c, true)
+
+	caps := billy.Capabilities(fs)
+	expected := billy.ReadCapability |
+		billy.SeekCapability
+
+	c.Assert(caps, Equals, expected)
+}
+
+func (s *ReadOnlyFilesystemSuite) TestWriteFile(c *C) {
+	f := fixtures[0]
+	fs := f.FS(c, true)
+
+	testFile := "write.txt"
+
+	_, err := fs.Create(testFile)
+	c.Assert(err, Equals, ErrReadOnlyFilesystem)
+
+	_, err = fs.Stat(testFile)
+	c.Assert(err, Equals, os.ErrNotExist)
+
+	_, err = fs.Create(testFile)
+	c.Assert(err, Equals, ErrReadOnlyFilesystem)
+
+	for _, flag := range []int{os.O_CREATE, os.O_WRONLY, os.O_TRUNC} {
+		_, err = fs.OpenFile(testFile, flag, 0664)
+		c.Assert(err, Equals, ErrReadOnlyFilesystem)
+	}
+
+	file, err := fs.Open("gopher.txt")
 	c.Assert(err, IsNil)
 
-	return polyfill.New(New(osfs.New(tmp), f.name))
+	_, err = file.Write([]byte{0, 0, 0, 0})
+	c.Assert(err, Equals, ErrReadOnlyFile)
+}
+
+func (s *ReadOnlyFilesystemSuite) TestDir(c *C) {
+	f := fixtures[0]
+	fs := f.FS(c, true)
+
+	err := fs.MkdirAll("new_dir", 0775)
+	c.Assert(err, Equals, ErrReadOnlyFilesystem)
+
+	err = fs.Remove("gopher.txt")
+	c.Assert(err, Equals, ErrReadOnlyFilesystem)
+
+	err = fs.Remove("dir")
+	c.Assert(err, Equals, ErrReadOnlyFilesystem)
+}
+
+func (s *ReadOnlyFilesystemSuite) TestOffset(c *C) {
+	f := fixtures[0]
+
+	_, err := f.FSOffset(c, true, 0)
+	c.Assert(err, IsNil)
+
+	_, err = f.FSOffset(c, true, 10)
+	c.Assert(err, IsNil)
+
+	_, err = f.FSOffset(c, false, 0)
+	c.Assert(err, IsNil)
+
+	_, err = f.FSOffset(c, false, 10)
+	c.Assert(err, Equals, ErrOffsetReadWrite)
 }

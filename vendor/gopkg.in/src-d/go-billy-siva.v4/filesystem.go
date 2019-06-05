@@ -22,6 +22,8 @@ var (
 	ErrFileWriteModeAlreadyOpen = errors.New("previous file in write mode already open")
 	ErrReadOnlyFile             = errors.New("file is read-only")
 	ErrWriteOnlyFile            = errors.New("file is write-only")
+	ErrReadOnlyFilesystem       = errors.New("filesystem is read-only")
+	ErrOffsetReadWrite          = errors.New("can only specify the offset in a read only filesystem")
 )
 
 const sivaCapabilities = billy.ReadCapability |
@@ -47,14 +49,26 @@ type SivaFS interface {
 	SivaSync
 }
 
+// SivaFSOptions holds configuration options for the filesystem.
+type SivaFSOptions struct {
+	// UnsafePaths set to on does not sanitize file paths.
+	UnsafePaths bool
+	// ReadOnly opens the siva file in read only mode.
+	ReadOnly bool
+	// Offset specifies the offset of the index. If it is 0 then the latest
+	// index is used. This is only usable in read only mode.
+	Offset uint64
+}
+
 type sivaFS struct {
 	underlying billy.Filesystem
 	path       string
 	f          billy.File
 	rw         *siva.ReadWriter
-	index      siva.Index
+	r          siva.Reader
 
 	fileWriteModeOpen bool
+	options           SivaFSOptions
 }
 
 // New creates a new filesystem backed by a siva file with the given path in
@@ -64,9 +78,16 @@ type sivaFS struct {
 // All files opened in write mode must be closed, otherwise the siva file will
 // be corrupted.
 func New(fs billy.Filesystem, path string) SivaBasicFS {
+	return NewWithOptions(fs, path, SivaFSOptions{})
+}
+
+// NewWithOptions creates a new siva backed filesystem and accepts options.
+// See New documentation.
+func NewWithOptions(fs billy.Filesystem, path string, o SivaFSOptions) SivaBasicFS {
 	return &sivaFS{
 		underlying: fs,
 		path:       path,
+		options:    o,
 	}
 }
 
@@ -75,9 +96,34 @@ func New(fs billy.Filesystem, path string) SivaBasicFS {
 // the main filesystem. It needs an additional parameter `tmpFs` where temporary
 // files will be stored. Note that `tmpFs` will be mounted as /tmp.
 func NewFilesystem(fs billy.Filesystem, path string, tmpFs billy.Filesystem) (SivaFS, error) {
+	return NewFilesystemWithOptions(fs, path, tmpFs, SivaFSOptions{})
+}
+
+// NewFilesystemWithOptions creates an entire filesystem siva as the main
+// backend. It accepts options. See NewFilesystem documentation.
+func NewFilesystemWithOptions(
+	fs billy.Filesystem,
+	path string,
+	tmpFs billy.Filesystem,
+	o SivaFSOptions,
+) (SivaFS, error) {
 	tempdir := "/tmp"
 
-	root := New(fs, path)
+	if !o.ReadOnly && o.Offset != 0 {
+		return nil, ErrOffsetReadWrite
+	}
+
+	root := NewWithOptions(fs, path, o)
+
+	if o.ReadOnly {
+		ro := &readOnly{
+			Filesystem: chroot.New(root, "/"),
+			SivaSync:   root,
+		}
+
+		return ro, nil
+	}
+
 	m := mount.New(root, tempdir, tmpFs)
 
 	t := &temp{
@@ -87,6 +133,20 @@ func NewFilesystem(fs billy.Filesystem, path string, tmpFs billy.Filesystem) (Si
 	}
 
 	return t, nil
+}
+
+// NewFilesystemReadOnly creates a read only filesystem backed by a siva file.
+// offset is the index offset inside the siva file. Set it to 0 to use the
+// last index.
+func NewFilesystemReadOnly(
+	fs billy.Filesystem,
+	path string,
+	offset uint64,
+) (SivaFS, error) {
+	return NewFilesystemWithOptions(fs, path, nil, SivaFSOptions{
+		ReadOnly: true,
+		Offset:   offset,
+	})
 }
 
 // Create creates a new file. This file is created using CREATE, TRUNCATE and
@@ -100,13 +160,17 @@ func (fs *sivaFS) Open(path string) (billy.File, error) {
 }
 
 func (fs *sivaFS) OpenFile(path string, flag int, mode os.FileMode) (billy.File, error) {
+	if err := fs.ensureOpen(); err != nil {
+		return nil, err
+	}
+
+	if fs.rw == nil && flag&(os.O_CREATE|os.O_TRUNC|os.O_WRONLY) != 0 {
+		return nil, ErrReadOnlyFilesystem
+	}
+
 	path = normalizePath(path)
 	if flag&os.O_CREATE != 0 && flag&os.O_TRUNC == 0 {
 		return nil, billy.ErrNotSupported
-	}
-
-	if err := fs.ensureOpen(); err != nil {
-		return nil, err
 	}
 
 	if flag&os.O_CREATE != 0 {
@@ -175,8 +239,14 @@ func (fs *sivaFS) ReadDir(path string) ([]os.FileInfo, error) {
 }
 
 func (fs *sivaFS) MkdirAll(filename string, perm os.FileMode) error {
+	filename = normalizePath(filename)
+
 	if err := fs.ensureOpen(); err != nil {
 		return err
+	}
+
+	if fs.rw == nil {
+		return ErrReadOnlyFilesystem
 	}
 
 	index, err := fs.getIndex()
@@ -207,6 +277,10 @@ func (fs *sivaFS) Remove(path string) error {
 		return err
 	}
 
+	if fs.rw == nil {
+		return ErrReadOnlyFilesystem
+	}
+
 	index, err := fs.getIndex()
 	if err != nil {
 		return err
@@ -215,9 +289,6 @@ func (fs *sivaFS) Remove(path string) error {
 	e := index.Find(path)
 
 	if e != nil {
-		// delete index cache on modification
-		fs.index = nil
-
 		return fs.rw.WriteHeader(&siva.Header{
 			Name:    path,
 			ModTime: time.Now(),
@@ -257,7 +328,20 @@ func (fs *sivaFS) Capabilities() billy.Capability {
 }
 
 func (fs *sivaFS) ensureOpen() error {
-	if fs.rw != nil {
+	if fs.r != nil {
+		return nil
+	}
+
+	if fs.options.ReadOnly {
+		f, err := fs.underlying.Open(fs.path)
+		if err != nil {
+			return err
+		}
+
+		r := siva.NewReaderWithOffset(f, fs.options.Offset)
+
+		fs.r = r
+		fs.f = f
 		return nil
 	}
 
@@ -273,20 +357,24 @@ func (fs *sivaFS) ensureOpen() error {
 	}
 
 	fs.rw = rw
+	fs.r = rw
 	fs.f = f
 	return nil
 }
 
 func (fs *sivaFS) ensureClosed() error {
-	if fs.rw == nil {
+	if fs.r == nil {
 		return nil
 	}
 
-	if err := fs.rw.Close(); err != nil {
-		return err
+	if fs.rw != nil {
+		if err := fs.rw.Close(); err != nil {
+			return err
+		}
 	}
 
 	fs.rw = nil
+	fs.r = nil
 
 	f := fs.f
 	fs.f = nil
@@ -303,9 +391,6 @@ func (fs *sivaFS) createFile(path string, flag int, mode os.FileMode) (billy.Fil
 		Mode:    mode,
 		ModTime: time.Now(),
 	}
-
-	// delete index cache on modification
-	fs.index = nil
 
 	if err := fs.rw.WriteHeader(header); err != nil {
 		return nil, err
@@ -342,7 +427,7 @@ func (fs *sivaFS) openFile(path string, flag int, mode os.FileMode) (billy.File,
 		return nil, os.ErrNotExist
 	}
 
-	sr, err := fs.rw.Get(e)
+	sr, err := fs.r.Get(e)
 	if err != nil {
 		return nil, err
 	}
@@ -350,27 +435,23 @@ func (fs *sivaFS) openFile(path string, flag int, mode os.FileMode) (billy.File,
 	return openFile(path, sr), nil
 }
 
-func (fs *sivaFS) getIndex() (siva.Index, error) {
-	// return cached index
-	if fs.index != nil {
-		return fs.index, nil
-	}
-
-	index, err := fs.rw.Index()
+func (fs *sivaFS) getIndex() (siva.OrderedIndex, error) {
+	index, err := fs.r.Index()
 	if err != nil {
 		return nil, err
 	}
 
-	fs.index = index.ToSafePaths()
-	fs.index = fs.index.Filter()
+	if fs.options.UnsafePaths {
+		return siva.OrderedIndex(index), nil
+	}
 
-	return fs.index, nil
+	return siva.OrderedIndex(index.ToSafePaths()), nil
 }
 
-func listFiles(index siva.Index, dir string) ([]os.FileInfo, error) {
+func listFiles(index siva.OrderedIndex, dir string) ([]os.FileInfo, error) {
 	dir = addTrailingSlash(dir)
 
-	entries, err := index.Glob(fmt.Sprintf("%s*", dir))
+	entries, err := siva.Index(index).Glob(fmt.Sprintf("%s*", dir))
 	if err != nil {
 		return nil, err
 	}
@@ -383,7 +464,7 @@ func listFiles(index siva.Index, dir string) ([]os.FileInfo, error) {
 	return contents, nil
 }
 
-func getDir(index siva.Index, dir string) (os.FileInfo, error) {
+func getDir(index siva.OrderedIndex, dir string) (os.FileInfo, error) {
 	dir = addTrailingSlash(dir)
 	lenDir := len(dir)
 
@@ -411,7 +492,7 @@ func getDir(index siva.Index, dir string) (os.FileInfo, error) {
 	return newDirFileInfo(path.Clean(dir), oldDir), nil
 }
 
-func listDirs(index siva.Index, dir string) ([]os.FileInfo, error) {
+func listDirs(index siva.OrderedIndex, dir string) ([]os.FileInfo, error) {
 	dir = addTrailingSlash(dir)
 
 	depth := strings.Count(dir, "/")
@@ -461,7 +542,8 @@ func addTrailingSlash(path string) string {
 // normalizePath returns a path relative to '/'.
 // It assumes UNIX-style slash-delimited paths.
 func normalizePath(path string) string {
-	path = filepath.Join("/", path)
+	path = filepath.Join(string(filepath.Separator), path)
+	path = filepath.ToSlash(path)
 	return removeLeadingSlash(path)
 }
 
@@ -486,8 +568,24 @@ func (h *temp) Capabilities() billy.Capability {
 	return sivaCapabilities
 }
 
+// Capability implements billy.TempFile interface.
 func (h *temp) TempFile(dir, prefix string) (billy.File, error) {
 	dir = h.Join(h.defaultDir, dir)
 
 	return util.TempFile(h.Filesystem, dir, prefix)
+}
+
+type readOnly struct {
+	billy.Filesystem
+	SivaSync
+}
+
+// Capability implements billy.Capable interface.
+func (r *readOnly) Capabilities() billy.Capability {
+	return sivaCapabilities & ^billy.WriteCapability
+}
+
+// Capability implements billy.TempFile interface.
+func (r *readOnly) TempFile(dir, prefix string) (billy.File, error) {
+	return nil, ErrReadOnlyFilesystem
 }

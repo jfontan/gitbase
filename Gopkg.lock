@@ -65,6 +65,14 @@
   version = "v1.12.0"
 
 [[projects]]
+  digest = "1:b13707423743d41665fd23f0c36b2f37bb49c30e94adb813319c44188a51ba22"
+  name = "github.com/ghodss/yaml"
+  packages = ["."]
+  pruneopts = ""
+  revision = "0ca9ea5df5451ffdf184b4428c902747c2c11cd7"
+  version = "v1.0.0"
+
+[[projects]]
   digest = "1:e692d16fdfbddb94e9e4886aaf6c08bdbae5cb4ac80651445de9181b371c6e46"
   name = "github.com/go-sql-driver/mysql"
   packages = ["."]
@@ -175,6 +183,14 @@
   version = "v0.1.0"
 
 [[projects]]
+  digest = "1:84c28d9899cc4e00c38042d345cea8819275a5a62403a58530cac67022894776"
+  name = "github.com/mattn/go-runewidth"
+  packages = ["."]
+  pruneopts = ""
+  revision = "3ee7d812e62a0804a7d0a324e0249ca2db3476d3"
+  version = "v0.0.4"
+
+[[projects]]
   branch = "master"
   digest = "1:bdcff37cd5cb47aa3a8a30771accadfcafa2d85adf919a3a1a1acb9e60ec2030"
   name = "github.com/mcuadros/go-lookup"
@@ -197,6 +213,14 @@
   pruneopts = ""
   revision = "a38c50148365edc8df43c1580c48fb2b3a1e9cd7"
   version = "v1.0.0"
+
+[[projects]]
+  digest = "1:28a9131d18ac1b8761f41370e59b7e807148bbd24a926816233522fb64e593bf"
+  name = "github.com/olekukonko/tablewriter"
+  packages = ["."]
+  pruneopts = ""
+  revision = "e6d60cf7ba1f42d86d54cdf5508611c4aafb3970"
+  version = "v0.0.1"
 
 [[projects]]
   branch = "master"
@@ -313,6 +337,19 @@
   pruneopts = ""
   revision = "f187355171c936ac84a82793659ebb4936bc1c23"
   version = "v1.3.0"
+
+[[projects]]
+  digest = "1:07169a40a4c899ad966d69e8e7230e6fc2edb20d790d87611eea6aa47f452b5b"
+  name = "github.com/src-d/go-borges"
+  packages = [
+    ".",
+    "libraries",
+    "plain",
+    "siva",
+    "util",
+  ]
+  pruneopts = ""
+  revision = "1e14753415bac87cadbb7df47c308e0c59d511fd"
 
 [[projects]]
   digest = "1:04977a807585d4c7392941d5e05220a00d118c2df2a9f88f407ae74b0d83aec6"
@@ -596,12 +633,12 @@
   version = "v1.7.2"
 
 [[projects]]
-  digest = "1:5e22c90776cebac8e7ff7cc6233c5569988d2042672156f9789c9ba6b03d1ac1"
+  digest = "1:b08d76f6955529b4b10b631e3df236cddb490c7e11d125a772fde2f178da9d46"
   name = "gopkg.in/src-d/go-billy-siva.v4"
   packages = ["."]
   pruneopts = ""
-  revision = "2996737a8fd9da56f864a9f420a1df5eeb50f0e1"
-  version = "v4.2.2"
+  revision = "0dae46e2b7bde79563f0b4eb2657beb467ed2115"
+  version = "v4.5.1"
 
 [[projects]]
   digest = "1:cc4fc94e3088593a2cde96c032e05d1e3c7d494147d7a7d707445ccc478bf4a0"
@@ -611,6 +648,7 @@
     "helper/chroot",
     "helper/mount",
     "helper/polyfill",
+    "memfs",
     "osfs",
     "util",
   ]
@@ -635,7 +673,7 @@
   version = "v3.1.1"
 
 [[projects]]
-  digest = "1:273b2f18413b7004bb95570fd570cb2b22f181f4691635570b39e429121308d3"
+  digest = "1:ed67aa92561911ea1fd81859ff14b8736a09609b33a7ab099c1907a99641dcee"
   name = "gopkg.in/src-d/go-git.v4"
   packages = [
     ".",
@@ -671,6 +709,7 @@
     "storage/filesystem",
     "storage/filesystem/dotgit",
     "storage/memory",
+    "storage/transactional",
     "utils/binary",
     "utils/diff",
     "utils/ioutil",
@@ -681,7 +720,7 @@
     "utils/merkletrie/noder",
   ]
   pruneopts = "NUT"
-  revision = "0106daba16494c33d330168e38c8a610b7a9b32c"
+  revision = "aa6f288c256ff8baf8a7745546a9752323dc0d89"
   source = "github.com/src-d/go-git"
 
 [[projects]]
@@ -708,12 +747,12 @@
   revision = "541fde3b92093b3a449e803342a7a18c686275e6"
 
 [[projects]]
-  digest = "1:f995136b53497081f1b3f29b99e78a597da6afb2bc6f22908382559a863df4ea"
+  digest = "1:103f0988f6af588296fa93c6875282285c3f15ee03f43aeef3decebc379b3134"
   name = "gopkg.in/src-d/go-siva.v1"
   packages = ["."]
   pruneopts = ""
-  revision = "7da16ad3bea1d7f5f448ef79336b940389af6281"
-  version = "v1.3.0"
+  revision = "4cc10f1d897bb8a6ce358b33311621c39ae81338"
+  version = "v1.5.0"
 
 [[projects]]
   digest = "1:137f35cf7ab6d7c137562df8ee0ed6bd88a04474fc7e876e2bb656d619db89bc"
@@ -780,8 +819,12 @@
     "github.com/hashicorp/golang-lru",
     "github.com/hhatto/gocloc",
     "github.com/jessevdk/go-flags",
+    "github.com/olekukonko/tablewriter",
     "github.com/opentracing/opentracing-go",
     "github.com/sirupsen/logrus",
+    "github.com/src-d/go-borges",
+    "github.com/src-d/go-borges/libraries",
+    "github.com/src-d/go-borges/siva",
     "github.com/stretchr/testify/require",
     "github.com/uber/jaeger-client-go/config",
     "google.golang.org/grpc/connectivity",

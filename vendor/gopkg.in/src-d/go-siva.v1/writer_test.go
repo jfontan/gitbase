@@ -131,14 +131,26 @@ func (s *WriterSuite) TestWriterZeroLength(c *C) {
 	c.Assert(err, IsNil)
 	s.writeFixture(c, w, files[1])
 
+	err = w.WriteHeader(&Header{
+		Name:    "C:\\some\\path\\file.txt",
+		Mode:    0600,
+		ModTime: time.Now(),
+	})
+	c.Assert(err, IsNil)
+
 	err = w.Close()
 	c.Assert(err, IsNil)
 
 	r := NewReader(bytes.NewReader(buf.Bytes()))
 	index, err := r.Index()
 	c.Assert(err, IsNil)
-	c.Assert(index[0].Name, Equals, "gopher.txt")
-	c.Assert(index[1].Name, Equals, "empty-file")
-	c.Assert(index[1].Size, Equals, uint64(0))
+
+	oi := OrderedIndex(index)
+	oi.Sort()
+
+	c.Assert(index[0].Name, Equals, "empty-file")
+	c.Assert(index[0].Size, Equals, uint64(0))
+	c.Assert(index[1].Name, Equals, "gopher.txt")
 	c.Assert(index[2].Name, Equals, "readme.txt")
+	c.Assert(index[3].Name, Equals, "some/path/file.txt")
 }

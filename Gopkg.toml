@@ -1,4 +1,8 @@
 [[constraint]]
+  name = "github.com/src-d/go-borges"
+  revision = "1e14753415bac87cadbb7df47c308e0c59d511fd"
+
+[[constraint]]
   name = "gopkg.in/src-d/go-mysql-server.v0"
   revision = "541fde3b92093b3a449e803342a7a18c686275e6"
 
@@ -17,7 +21,7 @@
 [[constraint]]
   name = "gopkg.in/src-d/go-git.v4"
   source = "github.com/src-d/go-git"
-  revision = "0106daba16494c33d330168e38c8a610b7a9b32c"
+  revision = "aa6f288c256ff8baf8a7745546a9752323dc0d89"
 
 [[constraint]]
   name = "gopkg.in/src-d/go-git-fixtures.v3"
