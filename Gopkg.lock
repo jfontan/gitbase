@@ -339,7 +339,8 @@
   version = "v1.3.0"
 
 [[projects]]
-  digest = "1:07169a40a4c899ad966d69e8e7230e6fc2edb20d790d87611eea6aa47f452b5b"
+  branch = "master"
+  digest = "1:c6dd58414fa7f0c4d848bee4d2f57de0e5143aee2dee6a1fc86e3341ddd7257a"
   name = "github.com/src-d/go-borges"
   packages = [
     ".",
@@ -349,7 +350,7 @@
     "util",
   ]
   pruneopts = ""
-  revision = "1e14753415bac87cadbb7df47c308e0c59d511fd"
+  revision = "9c4d5576a1a76329cd34fa505a1d33bc5218665e"
 
 [[projects]]
   digest = "1:04977a807585d4c7392941d5e05220a00d118c2df2a9f88f407ae74b0d83aec6"
