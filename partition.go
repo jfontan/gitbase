@@ -1,6 +1,8 @@
 package gitbase
 
 import (
+	"io"
+
 	"github.com/src-d/go-borges"
 	errors "gopkg.in/src-d/go-errors.v1"
 	"github.com/src-d/go-mysql-server/sql"
@@ -15,13 +17,27 @@ func (partitioned) Partitions(ctx *sql.Context) (sql.PartitionIter, error) {
 }
 
 func (partitioned) PartitionCount(ctx *sql.Context) (int64, error) {
-	return int64(42), nil
-	// s, err := getSession(ctx)
-	// if err != nil {
-	// 	return 0, err
-	// }
+	s, err := getSession(ctx)
+	if err != nil {
+		return 0, err
+	}
 
-	// return int64(len(s.Pool.repositories)), nil
+	it, err := s.Pool.RepoIter()
+	if err != nil {
+		return 0, err
+	}
+
+	var count int64
+	for {
+		_, err = it.Next()
+		if err == io.EOF {
+			return count, nil
+		}
+		if err != nil {
+			return 0, err
+		}
+		count++
+	}
 }
 
 // RepositoryPartition represents a partition which is a repository id.

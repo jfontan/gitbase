@@ -347,7 +347,6 @@ func newBlobsKeyValueIter(
 		return nil, err
 	}
 
-	// r := pool.repositories[repo.ID]
 	r, err := pool.GetRepo(repo.ID())
 	if err != nil {
 		return nil, err
