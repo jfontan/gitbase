@@ -93,11 +93,8 @@ func (p *RepositoryPool) GetRepo(id string) (*Repository, error) {
 	repo, err := p.library.Get(i, borges.ReadOnlyMode)
 	if err != nil {
 		if borges.ErrRepositoryNotExists.Is(err) {
-			println("not found")
 			return nil, ErrPoolRepoNotFound.New(id)
 		}
-
-		println("other error", err.Error())
 
 		return nil, err
 	}
