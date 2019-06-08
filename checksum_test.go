@@ -8,7 +8,6 @@ import (
 
 	fixtures "github.com/src-d/go-git-fixtures"
 	"github.com/stretchr/testify/require"
-	"gopkg.in/src-d/go-git.v4/plumbing/cache"
 )
 
 func TestChecksum(t *testing.T) {
@@ -18,11 +17,12 @@ func TestChecksum(t *testing.T) {
 		require.NoError(fixtures.Clean())
 	}()
 
-	pool := NewRepositoryPool(cache.DefaultMaxSize)
+	lib, pool, err := newMultiPool()
+	require.NoError(err)
 
 	for i, f := range fixtures.ByTag("worktree") {
 		path := f.Worktree().Root()
-		require.NoError(pool.AddGitWithID(fmt.Sprintf("repo_%d", i), path))
+		require.NoError(lib.AddPlain(fmt.Sprintf("repo_%d", i), path, nil))
 	}
 
 	c := &checksumable{pool}
@@ -30,9 +30,10 @@ func TestChecksum(t *testing.T) {
 	require.NoError(err)
 	require.Equal("mGPoKCyOIkXX4reGe1vTBPIOg2E=", checksum)
 
-	pool = NewRepositoryPool(cache.DefaultMaxSize)
+	lib, pool, err = newMultiPool()
+	require.NoError(err)
 	path := fixtures.ByTag("worktree").One().Worktree().Root()
-	require.NoError(pool.AddGitWithID("worktree", path))
+	require.NoError(lib.AddPlain("worktree", path, nil))
 
 	c = &checksumable{pool}
 	checksum, err = c.Checksum()
@@ -43,7 +44,9 @@ func TestChecksum(t *testing.T) {
 func TestChecksumSiva(t *testing.T) {
 	require := require.New(t)
 
-	pool := NewRepositoryPool(cache.DefaultMaxSize)
+	lib, pool, err := newMultiPool()
+	require.NoError(err)
+
 	require.NoError(
 		filepath.Walk("_testdata", func(path string, info os.FileInfo, err error) error {
 			if err != nil {
@@ -51,7 +54,7 @@ func TestChecksumSiva(t *testing.T) {
 			}
 
 			if IsSivaFile(path) {
-				require.NoError(pool.AddSivaFile(path))
+				require.NoError(lib.AddSiva(path, nil))
 			}
 
 			return nil
@@ -71,11 +74,12 @@ func TestChecksumStable(t *testing.T) {
 		require.NoError(fixtures.Clean())
 	}()
 
-	pool := NewRepositoryPool(cache.DefaultMaxSize)
+	lib, pool, err := newMultiPool()
+	require.NoError(err)
 
 	for i, f := range fixtures.ByTag("worktree") {
 		path := f.Worktree().Root()
-		require.NoError(pool.AddGitWithID(fmt.Sprintf("repo_%d", i), path))
+		require.NoError(lib.AddPlain(fmt.Sprintf("repo_%d", i), path, nil))
 	}
 
 	c := &checksumable{pool}
