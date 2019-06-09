@@ -41,4 +41,4 @@ require (
 	gopkg.in/yaml.v2 v2.2.2
 )
 
-replace github.com/src-d/go-borges => /home/jfontan/work/goborges
+replace github.com/src-d/go-borges => github.com/jfontan/go-borges v0.0.0-20190609165601-27b2cdac2977
