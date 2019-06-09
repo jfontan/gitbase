@@ -23,10 +23,9 @@ func (c *checksumable) Checksum() (string, error) {
 	}
 	defer iter.Close()
 
-	// for _, id := range c.pool.idOrder {
+	var checksums checksums
 	for {
-		// repo := c.pool.repositories[id]
-		// hash.Write([]byte(id))
+		hash.Reset()
 
 		repo, err := iter.Next()
 		if err == io.EOF {
@@ -51,6 +50,22 @@ func (c *checksumable) Checksum() (string, error) {
 		}
 
 		if _, err = hash.Write(bytes); err != nil {
+			return "", err
+		}
+
+		c := checksum{
+			name: repo.ID(),
+			hash: hash.Sum(nil),
+		}
+
+		checksums = append(checksums, c)
+	}
+
+	sort.Stable(checksums)
+	hash.Reset()
+
+	for _, c := range checksums {
+		if _, err = hash.Write(c.hash); err != nil {
 			return "", err
 		}
 	}
@@ -113,15 +128,23 @@ func (b byHashAndName) Less(i, j int) bool {
 	return strings.Compare(b[i].name, b[j].name) < 0
 }
 
-func readRefs(repo *Repository) ([]byte, error) {
-	// repo, err := r.Repo()
-	// if err != nil {
-	// 	if err == git.ErrRepositoryNotExists {
-	// 		return nil, nil
-	// 	}
-	// 	return nil, err
-	// }
+type checksum struct {
+	name string
+	hash []byte
+}
 
+type checksums []checksum
+
+func (b checksums) Len() int      { return len(b) }
+func (b checksums) Swap(i, j int) { b[i], b[j] = b[j], b[i] }
+func (b checksums) Less(i, j int) bool {
+	if cmp := bytes.Compare(b[i].hash, b[j].hash); cmp != 0 {
+		return cmp < 0
+	}
+	return strings.Compare(b[i].name, b[j].name) < 0
+}
+
+func readRefs(repo *Repository) ([]byte, error) {
 	buf := bytes.NewBuffer(nil)
 
 	refs, err := repo.References()

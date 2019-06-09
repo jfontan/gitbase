@@ -8,6 +8,13 @@ import (
 
 	fixtures "github.com/src-d/go-git-fixtures"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/src-d/go-billy.v4/osfs"
+)
+
+const (
+	checksumMulti  = "W/lxpR0jZ6O6BqVANTYTDMlAS/4="
+	checksumSingle = "zqLF31JlrtJ57XNC+cQ+2hSkBkw="
+	checksumSiva   = "X27U+Lww5UOk1+/21bVFgI4uJyM="
 )
 
 func TestChecksum(t *testing.T) {
@@ -28,7 +35,7 @@ func TestChecksum(t *testing.T) {
 	c := &checksumable{pool}
 	checksum, err := c.Checksum()
 	require.NoError(err)
-	require.Equal("mGPoKCyOIkXX4reGe1vTBPIOg2E=", checksum)
+	require.Equal(checksumMulti, checksum)
 
 	lib, pool, err = newMultiPool()
 	require.NoError(err)
@@ -38,7 +45,7 @@ func TestChecksum(t *testing.T) {
 	c = &checksumable{pool}
 	checksum, err = c.Checksum()
 	require.NoError(err)
-	require.Equal("rwQnBj7HRazv9wuU//nQ+nuf0WY=", checksum)
+	require.Equal(checksumSingle, checksum)
 }
 
 func TestChecksumSiva(t *testing.T) {
@@ -47,6 +54,10 @@ func TestChecksumSiva(t *testing.T) {
 	lib, pool, err := newMultiPool()
 	require.NoError(err)
 
+	cwd, err := os.Getwd()
+	require.NoError(err)
+	cwdFS := osfs.New(cwd)
+
 	require.NoError(
 		filepath.Walk("_testdata", func(path string, info os.FileInfo, err error) error {
 			if err != nil {
@@ -54,7 +65,7 @@ func TestChecksumSiva(t *testing.T) {
 			}
 
 			if IsSivaFile(path) {
-				require.NoError(lib.AddSiva(path, nil))
+				require.NoError(lib.AddSiva(path, cwdFS))
 			}
 
 			return nil
@@ -64,7 +75,7 @@ func TestChecksumSiva(t *testing.T) {
 	c := &checksumable{pool}
 	checksum, err := c.Checksum()
 	require.NoError(err)
-	require.Equal("wJEvZNAc7QRszsf9KhGu+UeKto0=", checksum)
+	require.Equal(checksumSiva, checksum)
 }
 
 func TestChecksumStable(t *testing.T) {
@@ -87,6 +98,6 @@ func TestChecksumStable(t *testing.T) {
 	for i := 0; i < 100; i++ {
 		checksum, err := c.Checksum()
 		require.NoError(err)
-		require.Equal("mGPoKCyOIkXX4reGe1vTBPIOg2E=", checksum)
+		require.Equal(checksumMulti, checksum)
 	}
 }
