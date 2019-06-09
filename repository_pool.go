@@ -60,8 +60,10 @@ func (r *Repository) Cache() cache.Object {
 }
 
 func (r *Repository) Close() {
-	if closer, ok := r.repo.(io.Closer); ok {
-		closer.Close()
+	if r != nil && r.repo != nil {
+		if closer, ok := r.repo.(io.Closer); ok {
+			closer.Close()
+		}
 	}
 }
 

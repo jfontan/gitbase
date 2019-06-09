@@ -38,6 +38,7 @@ require (
 	gopkg.in/src-d/go-git.v4 v4.11.0
 	gopkg.in/src-d/go-vitess.v1 v1.7.0
 	gopkg.in/toqueteos/substring.v1 v1.0.2 // indirect
+	gopkg.in/yaml.v2 v2.2.2
 )
 
 replace github.com/src-d/go-borges => /home/jfontan/work/goborges
