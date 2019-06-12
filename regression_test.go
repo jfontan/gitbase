@@ -7,9 +7,9 @@ import (
 	"testing"
 
 	"github.com/src-d/gitbase"
-	"github.com/stretchr/testify/require"
 	"github.com/src-d/go-mysql-server/sql"
 	"github.com/src-d/go-mysql-server/sql/index/pilosa"
+	"github.com/stretchr/testify/require"
 	yaml "gopkg.in/yaml.v2"
 )
 
